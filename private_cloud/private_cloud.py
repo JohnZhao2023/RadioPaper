@@ -1,12 +1,13 @@
 import socket
+import yaml
 from Crypto.Random import get_random_bytes
 from EncryptionDecryption import encryption_process, decrypt_ipv4_addresses
 import time
-from langchain.document_loaders import TextLoader
 
+# What environment variable can be set to select a different kubeconfig file when running antctl out-of-cluster in "controller mode"?
 
 # private cloud agent in charge of receiving the answer and decrypt it
-def private_cloud_server(address_mapping, host='xx.xx.xx.xx', port=8000):
+def private_cloud_server(address_mapping, host='0.0.0.0', port=8000):
     # establish a socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         # bind the host private cloud address and port 8000
@@ -26,8 +27,6 @@ def private_cloud_server(address_mapping, host='xx.xx.xx.xx', port=8000):
 
             # decrypt the answer using the address mapping
             decrypted_answer = decrypt_ipv4_addresses(address_mapping, data)
-            # no decryption
-            # decrypted_answer = encrypted_answer
 
             # print
             print("\nThe encrypted anwer is:\n", encrypted_answer)
@@ -37,7 +36,9 @@ def private_cloud_server(address_mapping, host='xx.xx.xx.xx', port=8000):
 
 # private cloud agent in charge of generating the question and encrypt it
 def private_cloud_client(address_mapping, key,
-                         server_host='xx.xx.xx.xx', server_port=8000):
+                         server_host,
+                         server_port=8000,
+                         private_port=8000):
 
     # generating the socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -76,7 +77,7 @@ def private_cloud_client(address_mapping, key,
             print("\nthe question is already sent to the public server!")
 
             # start to listen to the port to get the undecrypted answer
-            private_cloud_server(address_mapping)
+            private_cloud_server(address_mapping, port=private_port)
 
             # end time
             end_time = time.time()
@@ -87,6 +88,15 @@ def private_cloud_client(address_mapping, key,
 
 # main func
 if __name__ == "__main__":
+    # read yaml file
+    with open('private_cloud.yaml', 'r') as file:
+        yaml_data = yaml.safe_load(file)
+
+    # get the params
+    public_server_addr = yaml_data['properties']['public-server-address']
+    public_port = yaml_data['properties']['public-server-port']
+    private_port = yaml_data['properties']['private-server-port']
+
     # forming the key
     key = get_random_bytes(16)
 
@@ -94,4 +104,7 @@ if __name__ == "__main__":
     address_mapping = {}
 
     # private cloud
-    private_cloud_client(address_mapping, key)
+    private_cloud_client(address_mapping, key,
+                         server_host=public_server_addr,
+                         server_port=public_port,
+                         private_port=private_port)

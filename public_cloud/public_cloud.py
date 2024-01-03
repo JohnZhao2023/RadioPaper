@@ -7,26 +7,11 @@ from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import MarkdownHeaderTextSplitter
 import socket
-
-
-# check if the document is in the cache
-def get_document_embeddings(document_embeddings_cache, documents):
-    embeddings = []
-    for doc in documents:
-        if doc in document_embeddings_cache:
-            # use embedding in cache
-            embeddings.append(document_embeddings_cache[doc])
-        else:
-            # create new embedding
-            embedding = OpenAIEmbeddings(openai_api_key="YOUR_OPENAI_API_KEY").embed(doc)
-            document_embeddings_cache[doc] = embedding
-            embeddings.append(embedding)
-
-    return documents, embeddings
+import yaml
 
 
 # the agent in charge of sending the undecrypted answer to the private cloud
-def send_answer_to_private_cloud(encrypted_answer, private_cloud_host='xx.xx.xx.xx', private_cloud_port=8000):
+def send_answer_to_private_cloud(encrypted_answer, private_cloud_host, private_cloud_port=8000):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         # connect to the private cloud
         s.connect((private_cloud_host, private_cloud_port))
@@ -39,14 +24,17 @@ def send_answer_to_private_cloud(encrypted_answer, private_cloud_host='xx.xx.xx.
 
 
 # agent in charge of receiving the question and begin RAG process
-def public_cloud_server(document_embeddings_cache, host='xx.xx.xx.xx', port=8000):
+def public_cloud_server(open_api_key_yaml,
+                        public_port=8000,
+                        private_port=8000,
+                        host='0.0.0.0'):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         # bind the agent on the port to receive the question
-        s.bind((host, port))
+        s.bind((host, public_port))
         s.listen()
 
         # print the info of the success of the listening to the port
-        print(f"Success! The {host} is listening on the port {port}...")
+        print(f"Success! The {host} is listening on the port {public_port}...")
 
         # connected by the private cloud
         conn, addr = s.accept()
@@ -79,8 +67,8 @@ def public_cloud_server(document_embeddings_cache, host='xx.xx.xx.xx', port=8000
                 encrypted_markdown_content = data[index+9:]
                 if len(encrypted_question) > 8192:
                     encrypted_question = encrypted_question[:8192]
+
                 # check the cache
-                # encrypted_markdown_content, document_embeddings_cache = get_document_embeddings(document_embeddings_cache, encrypted_markdown_content)
 
                 # start RAG process
                 # data pre-processing
@@ -96,10 +84,10 @@ def public_cloud_server(document_embeddings_cache, host='xx.xx.xx.xx', port=8000
 
                 # retriever setting
                 retriever = FAISS.from_documents(md_header_splits,
-                                                 OpenAIEmbeddings(openai_api_key="YOUR_OPENAI_API_KEY")).as_retriever(search_kwargs={"k": 2})
+                                                 OpenAIEmbeddings(openai_api_key=open_api_key_yaml)).as_retriever(search_kwargs={"k": 2})
 
                 # model setting
-                open_api_key = "YOUR_OPENAI_API_KEY"
+                open_api_key = open_api_key_yaml
                 template = """How to use antctl command without bash character to implement question based only on the following context:
                     {context}
 
@@ -120,7 +108,9 @@ def public_cloud_server(document_embeddings_cache, host='xx.xx.xx.xx', port=8000
                 # send the encrypted answer to the private cloud
                 if not encrypted_answer:
                     continue
-                send_answer_to_private_cloud(encrypted_answer)
+                send_answer_to_private_cloud(encrypted_answer,
+                                             private_cloud_host=addr[0],
+                                             private_cloud_port=private_port)
 
                 # clean data
                 data = []
@@ -128,10 +118,18 @@ def public_cloud_server(document_embeddings_cache, host='xx.xx.xx.xx', port=8000
             # print('Connection closed')
 
 
-# main fun
+# main func
 if __name__ == "__main__":
-    # define the cache
-    document_embeddings_cache = {}
+    # read yaml file
+    with open('public_cloud.yaml', 'r') as file:
+        yaml_data = yaml.safe_load(file)
+
+    # get the params
+    open_api_key_yaml = yaml_data['properties']['openai_api_key']
+    public_port = yaml_data['properties']['public-server-port']
+    private_port = yaml_data['properties']['private-server-port']
 
     # public cloud service
-    public_cloud_server(document_embeddings_cache)
+    public_cloud_server(open_api_key_yaml=open_api_key_yaml,
+                        public_port=public_port,
+                        private_port=private_port)
