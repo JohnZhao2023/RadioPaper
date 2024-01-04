@@ -8,6 +8,7 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import MarkdownHeaderTextSplitter
 import socket
 import yaml
+import time
 
 
 # the agent in charge of sending the undecrypted answer to the private cloud
@@ -70,6 +71,9 @@ def public_cloud_server(open_api_key_yaml,
 
                 # check the cache
 
+                # start the time counting
+                start_RAG_time = time.time()
+
                 # start RAG process
                 # data pre-processing
                 headers_to_split_on = [
@@ -82,9 +86,18 @@ def public_cloud_server(open_api_key_yaml,
                 # md_header_splits = markdown_splitter.split_text(encrypted_markdown_content[0].page_content)
                 md_header_splits = markdown_splitter.split_text(encrypted_markdown_content)
 
+                # start retriever time
+                start_retriever_time = time.time()
+
                 # retriever setting
                 retriever = FAISS.from_documents(md_header_splits,
                                                  OpenAIEmbeddings(openai_api_key=open_api_key_yaml)).as_retriever(search_kwargs={"k": 2})
+                # end retriever time
+                end_retriever_time = time.time()
+
+                # print
+                # print the time
+                print(f"\tThe time for retriever process is: {end_retriever_time - start_retriever_time} second")
 
                 # model setting
                 open_api_key = open_api_key_yaml
@@ -104,6 +117,12 @@ def public_cloud_server(open_api_key_yaml,
                 # RAG
                 chain = setup_and_retrieval | prompt | model | output_parser
                 encrypted_answer = chain.invoke(encrypted_question)
+
+                # finish time counting
+                end_RAG_time = time.time()
+
+                # print the time
+                print(f"\tThe time for RAG process is: {end_RAG_time - start_RAG_time} second")
 
                 # send the encrypted answer to the private cloud
                 if not encrypted_answer:
