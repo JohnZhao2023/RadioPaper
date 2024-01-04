@@ -23,14 +23,14 @@
     1. establish a docker image with the name "private-cloud-img":
     docker build -t private-cloud-img . -f Dockerfile-private
     2. run the command "docker run" to start the "private-cloud-img" image:
-    docker run -it -p <private-server-port>:<private-server-port> --name private-service private-cloud-img
+    docker run -it -p {private-server-port}:{private-server-port} --name private-service private-cloud-img
     please note, the param "-it" should be included to make the docker interact with the window for the question input, -p is for port mapping from the docker to the host
     3. use the service as the direct run
 - on the public cloud, the procedures should be as below:
     1. establish a docker image with the name "public-cloud-img":
     docker build -t public-cloud-img . -f Dockerfile-public
     2. run the command "docker run" to start the "public-cloud-img" image:
-    docker run -it -p <public-server-port>:<public-server-port> --name public-service public-cloud-img
+    docker run -it -p {public-server-port}:{public-server-port} --name public-service public-cloud-img
     3. use the service as the direct run
 
 # Things to be noticed
