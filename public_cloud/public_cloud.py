@@ -6,9 +6,28 @@ from langchain.schema.runnable import RunnableParallel, RunnablePassthrough
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import MarkdownHeaderTextSplitter
+from langchain.embeddings import CacheBackedEmbeddings
+from langchain.storage import LocalFileStore
 import socket
 import yaml
 import time
+
+# get the global setting of the params
+# read yaml file
+with open('public_cloud.yaml', 'r') as file:
+    yaml_data = yaml.safe_load(file)
+
+# get the params
+open_api_key_yaml = yaml_data['properties']['openai_api_key']
+public_port = yaml_data['properties']['public-server-port']
+private_port = yaml_data['properties']['private-server-port']
+
+# cache settings
+underlying_embeddings = OpenAIEmbeddings(openai_api_key=open_api_key_yaml)
+store = LocalFileStore("./cache/")
+cached_embedder = CacheBackedEmbeddings.from_bytes_store(
+    underlying_embeddings, store, namespace=underlying_embeddings.model
+)
 
 
 # the agent in charge of sending the undecrypted answer to the private cloud
@@ -51,12 +70,6 @@ def public_cloud_server(open_api_key_yaml,
                     data = []
                     continue
 
-                # if data:
-                #     json_data = json.loads(data)
-                #     encrypted_question = json_data['encrypted_question']
-                #     encrypted_markdown_content = json_data['encrypted_markdown_content']
-                #     print(encrypted_question)
-
                 # find the segment tag, if not find then it's not normal data
                 index = data.find("__xxxxx__")
                 if index == -1:
@@ -83,15 +96,14 @@ def public_cloud_server(open_api_key_yaml,
                     ("####", "Header 4"),
                 ]
                 markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
-                # md_header_splits = markdown_splitter.split_text(encrypted_markdown_content[0].page_content)
                 md_header_splits = markdown_splitter.split_text(encrypted_markdown_content)
 
                 # start retriever time
                 start_retriever_time = time.time()
 
                 # retriever setting
-                retriever = FAISS.from_documents(md_header_splits,
-                                                 OpenAIEmbeddings(openai_api_key=open_api_key_yaml)).as_retriever(search_kwargs={"k": 2})
+                retriever = FAISS.from_documents(md_header_splits, cached_embedder).as_retriever(search_kwargs={"k": 2})
+
                 # end retriever time
                 end_retriever_time = time.time()
 
@@ -139,15 +151,6 @@ def public_cloud_server(open_api_key_yaml,
 
 # main func
 if __name__ == "__main__":
-    # read yaml file
-    with open('public_cloud.yaml', 'r') as file:
-        yaml_data = yaml.safe_load(file)
-
-    # get the params
-    open_api_key_yaml = yaml_data['properties']['openai_api_key']
-    public_port = yaml_data['properties']['public-server-port']
-    private_port = yaml_data['properties']['private-server-port']
-
     # public cloud service
     public_cloud_server(open_api_key_yaml=open_api_key_yaml,
                         public_port=public_port,
