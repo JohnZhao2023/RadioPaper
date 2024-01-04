@@ -1,3 +1,4 @@
+# import the relevant libraries
 import socket
 import yaml
 from Crypto.Random import get_random_bytes
@@ -5,6 +6,7 @@ from EncryptionDecryption import encryption_process, decrypt_ipv4_addresses
 import time
 
 # What environment variable can be set to select a different kubeconfig file when running antctl out-of-cluster in "controller mode"?
+
 
 # private cloud agent in charge of receiving the answer and decrypt it
 def private_cloud_server(address_mapping, host='0.0.0.0', port=8000):
@@ -14,12 +16,12 @@ def private_cloud_server(address_mapping, host='0.0.0.0', port=8000):
         s.bind((host, port))
         s.listen()
         # show the information
-        print(f"\nSuccess! The private cloud {host} is listening on the port {port}...")
+        print(f"\tSuccess! The private cloud {host} is listening on the port {port}...")
         # receive the connection from the public server
         conn, addr = s.accept()
         with conn:
             # print which public server is connected
-            print('\nConnected by', addr)
+            print('\tConnected by', addr)
 
             # receive the data
             data = conn.recv(1024*1024*8192).decode('utf-8')
@@ -29,8 +31,8 @@ def private_cloud_server(address_mapping, host='0.0.0.0', port=8000):
             decrypted_answer = decrypt_ipv4_addresses(address_mapping, data)
 
             # print
-            print("\nThe encrypted anwer is:\n", encrypted_answer)
-            print("\nThe decrypted anwer is:\n", decrypted_answer)
+            print("\n\tThe encrypted anwer is:\n\t", encrypted_answer)
+            print("\tThe decrypted anwer is:\n\t", decrypted_answer)
             # print('Connection closed')
 
 
@@ -47,10 +49,13 @@ def private_cloud_client(address_mapping, key,
         # print the connection success
         print(f"\nconnecting to the public cloud {server_host} succeed!")
 
+        # question count
+        question_count = 1
+
         # asking question
         while True:
             # get unencrypted question from the input
-            question = input("\nplease input question, input exit to exit:\n")
+            question = input(f"\nplease input No.{question_count} question, input exit to exit:\n")
             # exit
             if question.lower() == 'exit':
                 s.sendall('Exit'.encode('utf-8'))
@@ -74,7 +79,7 @@ def private_cloud_client(address_mapping, key,
             # sent the encrypted question and references
             data = encrypted_input + "__xxxxx__" + encrypted_markdown_content
             s.sendall(data.encode('utf-8'))
-            print("\nthe question is already sent to the public server!")
+            print("\n\tthe question is already sent to the public server!")
 
             # start to listen to the port to get the undecrypted answer
             private_cloud_server(address_mapping, port=private_port)
@@ -83,7 +88,13 @@ def private_cloud_client(address_mapping, key,
             end_time = time.time()
 
             # print the time
-            print(f"\nThe time for this process is: {end_time - start_time} second")
+            print(f"\n\tThe time for this process is: {end_time - start_time} second")
+
+            # add the count
+            question_count = question_count + 1
+
+        # print end information
+        print('Service is closed')
 
 
 # main func
