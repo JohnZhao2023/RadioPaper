@@ -3,4 +3,6 @@ openai
 tiktoken
 faiss-gpu
 faiss-cpu
+rouge-score
+pandas
 pyyaml

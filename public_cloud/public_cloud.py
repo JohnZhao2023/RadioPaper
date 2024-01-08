@@ -1,4 +1,4 @@
-# import the lib with ChatGPT model and relevant libs
+# Import required libraries
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
@@ -8,87 +8,77 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import MarkdownHeaderTextSplitter
 from langchain.embeddings import CacheBackedEmbeddings
 from langchain.storage import LocalFileStore
+from rouge_score import rouge_scorer
 import socket
 import yaml
 import time
+import pandas as pd
 
-# get the global setting of the params
-# read yaml file
+# Read the configuration file
 with open('public_cloud.yaml', 'r') as file:
     yaml_data = yaml.safe_load(file)
 
-# get the params
+# Get parameters
 open_api_key_yaml = yaml_data['properties']['openai_api_key']
 public_port = yaml_data['properties']['public-server-port']
 private_port = yaml_data['properties']['private-server-port']
 
-# cache settings
+# Cache settings
 underlying_embeddings = OpenAIEmbeddings(openai_api_key=open_api_key_yaml)
 store = LocalFileStore("./cache/")
 cached_embedder = CacheBackedEmbeddings.from_bytes_store(
     underlying_embeddings, store, namespace=underlying_embeddings.model
 )
 
+# Read standard answers from the CSV file
+standard_answers_df = pd.read_csv('/path/to/your/csv/file.csv')  # Replace with your CSV file path
 
-# the agent in charge of sending the undecrypted answer to the private cloud
+
+# Function to send the unencrypted answer to the private cloud
 def send_answer_to_private_cloud(encrypted_answer, private_cloud_host, private_cloud_port=8000):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        # connect to the private cloud
         s.connect((private_cloud_host, private_cloud_port))
-
-        # print the connection success info
-        print(f"connecting to the private cloud {private_cloud_host} succeed!")
-
-        # send the undecrypted answer
+        print(f"Connecting to the private cloud {private_cloud_host} succeeded!")
         s.sendall(encrypted_answer.encode('utf-8'))
 
 
-# agent in charge of receiving the question and begin RAG process
-def public_cloud_server(open_api_key_yaml,
-                        public_port=8000,
-                        private_port=8000,
-                        host='0.0.0.0'):
+# Function to calculate the ROUGE-1 score
+def calculate_rouge_score(reference, hypothesis):
+    scorer = rouge_scorer.RougeScorer(['rouge1'], use_stemmer=True)
+    scores = scorer.score(reference, hypothesis)
+    return scores['rouge1'].fmeasure
+
+
+# Public cloud server function
+def public_cloud_server(open_api_key_yaml, public_port=8000, private_port=8000, host='0.0.0.0'):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        # bind the agent on the port to receive the question
         s.bind((host, public_port))
         s.listen()
-
-        # print the info of the success of the listening to the port
         print(f"Success! The {host} is listening on the port {public_port}...")
 
-        # connected by the private cloud
         conn, addr = s.accept()
         with conn:
             print('Connected by', addr)
-            # constantly receive the data from the private cloud
             while True:
-                # receive the data
                 data = conn.recv(1024*1024*16384).decode('utf-8')
-
-                # if data is empty
                 if not data or len(data) < 1:
-                    data = []
                     continue
 
-                # find the segment tag, if not find then it's not normal data
                 index = data.find("__xxxxx__")
                 if index == -1:
-                    data = []
                     continue
 
-                # extract the question and the content
                 encrypted_question = data[:index]
                 encrypted_markdown_content = data[index+9:]
                 if len(encrypted_question) > 8192:
                     encrypted_question = encrypted_question[:8192]
 
-                # check the cache
+                # Assuming you have decrypted the question and markdown content
+                # decrypted_question = your_decryption_function(encrypted_question)
+                # markdown_content = your_decryption_function(encrypted_markdown_content)
 
-                # start the time counting
+                # RAG process
                 start_RAG_time = time.time()
-
-                # start RAG process
-                # data pre-processing
                 headers_to_split_on = [
                     ("#", "Header 1"),
                     ("##", "Header 2"),
@@ -96,62 +86,35 @@ def public_cloud_server(open_api_key_yaml,
                     ("####", "Header 4"),
                 ]
                 markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
-                md_header_splits = markdown_splitter.split_text(encrypted_markdown_content)
+                md_header_splits = markdown_splitter.split_text(markdown_content)
 
-                # start retriever time
-                start_retriever_time = time.time()
-
-                # retriever setting
                 retriever = FAISS.from_documents(md_header_splits, cached_embedder).as_retriever(search_kwargs={"k": 2})
 
-                # end retriever time
-                end_retriever_time = time.time()
-
-                # print
-                # print the time
-                print(f"\tThe time for retriever process is: {end_retriever_time - start_retriever_time} second")
-
-                # model setting
-                open_api_key = open_api_key_yaml
                 template = """How to use antctl command without bash character to implement question based only on the following context:
-                    {context}
+                {context}
 
                 Question: {question}
-                    """
+                """
                 prompt = ChatPromptTemplate.from_template(template)
-                # model = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=open_api_key)
-                model = ChatOpenAI(model_name="gpt-4", openai_api_key=open_api_key)
+                model = ChatOpenAI(model_name="gpt-4", openai_api_key=open_api_key_yaml)
                 output_parser = StrOutputParser()
                 setup_and_retrieval = RunnableParallel(
                     {"context": retriever, "question": RunnablePassthrough()}
                 )
 
-                # RAG
                 chain = setup_and_retrieval | prompt | model | output_parser
-                encrypted_answer = chain.invoke(encrypted_question)
+                model_answer = chain.invoke(decrypted_question)
 
-                # finish time counting
+                # Calculate ROUGE-1 score
+                standard_answer = standard_answers_df.loc[standard_answers_df['question'] == decrypted_question, 'answer'].iloc[0]
+                rouge_score = calculate_rouge_score(standard_answer, model_answer)
+
+                # Send the answer and ROUGE-1 score to the private cloud
+                send_answer_to_private_cloud(f"Answer: {model_answer}\nROUGE-1 Score: {rouge_score}", addr[0], private_port)
+
                 end_RAG_time = time.time()
-
-                # print the time
-                print(f"\tThe time for RAG process is: {end_RAG_time - start_RAG_time} second")
-
-                # send the encrypted answer to the private cloud
-                if not encrypted_answer:
-                    continue
-                send_answer_to_private_cloud(encrypted_answer,
-                                             private_cloud_host=addr[0],
-                                             private_cloud_port=private_port)
-
-                # clean data
-                data = []
-
-            # print('Connection closed')
+                print(f"The time for RAG process is: {end_RAG_time - start_RAG_time} second")
 
 
-# main func
 if __name__ == "__main__":
-    # public cloud service
-    public_cloud_server(open_api_key_yaml=open_api_key_yaml,
-                        public_port=public_port,
-                        private_port=private_port)
+    public_cloud_server(open_api_key_yaml=open_api_key_yaml, public_port=public_port, private_port=private_port)
