@@ -31,8 +31,7 @@ cached_embedder = CacheBackedEmbeddings.from_bytes_store(
 )
 
 # Read standard answers from the CSV file
-standard_answers_df = pd.read_csv('/path/to/your/csv/file.csv')  # Replace with your CSV file path
-
+standard_answers_df = pd.read_csv('./antrea_questions_answers_updated.csv')  # Replace with your CSV file path
 
 # Function to send the unencrypted answer to the private cloud
 def send_answer_to_private_cloud(encrypted_answer, private_cloud_host, private_cloud_port=8000):
@@ -86,7 +85,7 @@ def public_cloud_server(open_api_key_yaml, public_port=8000, private_port=8000, 
                     ("####", "Header 4"),
                 ]
                 markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
-                md_header_splits = markdown_splitter.split_text(markdown_content)
+                md_header_splits = markdown_splitter.split_text(encrypted_markdown_content)
 
                 retriever = FAISS.from_documents(md_header_splits, cached_embedder).as_retriever(search_kwargs={"k": 2})
 
@@ -103,14 +102,17 @@ def public_cloud_server(open_api_key_yaml, public_port=8000, private_port=8000, 
                 )
 
                 chain = setup_and_retrieval | prompt | model | output_parser
-                model_answer = chain.invoke(decrypted_question)
+                model_answer = chain.invoke(encrypted_question)
 
                 # Calculate ROUGE-1 score
-                standard_answer = standard_answers_df.loc[standard_answers_df['question'] == decrypted_question, 'answer'].iloc[0]
+                standard_answer = standard_answers_df.loc[standard_answers_df['Question'] == encrypted_question, 'Answer'].iloc[0]
                 rouge_score = calculate_rouge_score(standard_answer, model_answer)
 
+                # print
+                print(f"{model_answer}ROUGE-1 Score:{rouge_score}")
+
                 # Send the answer and ROUGE-1 score to the private cloud
-                send_answer_to_private_cloud(f"Answer: {model_answer}\nROUGE-1 Score: {rouge_score}", addr[0], private_port)
+                send_answer_to_private_cloud(f"{model_answer}ROUGE-1 Score:{rouge_score}", addr[0], private_port)
 
                 end_RAG_time = time.time()
                 print(f"The time for RAG process is: {end_RAG_time - start_RAG_time} second")
