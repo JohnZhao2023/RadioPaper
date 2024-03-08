@@ -5,6 +5,7 @@ from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import RunnableParallel, RunnablePassthrough
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
+from langchain.embeddings import ModelScopeEmbeddings
 from langchain.text_splitter import MarkdownHeaderTextSplitter
 from langchain.embeddings import CacheBackedEmbeddings
 from langchain.storage import LocalFileStore
@@ -24,10 +25,10 @@ public_port = yaml_data['properties']['public-server-port']
 private_port = yaml_data['properties']['private-server-port']
 
 # Cache settings
-underlying_embeddings = OpenAIEmbeddings(openai_api_key=open_api_key_yaml)
+underlying_embeddings = ModelScopeEmbeddings()
 store = LocalFileStore("./cache/")
 cached_embedder = CacheBackedEmbeddings.from_bytes_store(
-    underlying_embeddings, store, namespace=underlying_embeddings.model
+    underlying_embeddings, store
 )
 
 # Read standard answers from the CSV file
@@ -87,7 +88,7 @@ def public_cloud_server(open_api_key_yaml, public_port=8000, private_port=8000, 
                 markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
                 md_header_splits = markdown_splitter.split_text(encrypted_markdown_content)
 
-                retriever = FAISS.from_documents(md_header_splits, cached_embedder).as_retriever(search_kwargs={"k": 2})
+                retriever = FAISS.from_documents(md_header_splits, cached_embedder).as_retriever(search_kwargs={"k": 200})
 
                 template = """How to use antctl command without bash character to implement question based only on the following context:
                 {context}
