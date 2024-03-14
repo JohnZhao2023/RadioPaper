@@ -1,0 +1,16 @@
+apiVersion: "example.com/v1"
+kind: GrpcReplyRule
+metadata:
+  name: example-reply-rule
+spec:
+  rules:
+    - token: "token1"
+      role: "role1"
+      message: "Hi, Role 1!"
+    - token: "token2"
+      role: "role2"
+      message: "Hi, Role 2!"
+    - token: "token3"
+      role: "role3"
+      message: "This is Token3"
+

@@ -1,0 +1,31 @@
+// message.proto
+syntax = "proto3";
+
+package google.reply;
+
+service ReplyService {
+  rpc GetReply(ReplyRequest) returns (ReplyResponse) {}
+}
+
+enum StatusCode {
+  ERR = 0;
+  UNRAG_REQUEST = 1;
+  RAG_REQUEST = 2;
+  DECRYPTED_RAG_REQUEST = 3;
+  PRIVATE_AGENT_RETRIVE_REQUEST = 4;
+  PRIVATE_AGENT_LLM_REQUEST = 5;
+  PRICATE_AGENT_ENCRYPTED_LLM_REQUEST = 6;
+  PUBLIC_AGENT_LLM_RESPONSE = 7;
+  PUBLIC_AGENT_ENCYPTED_LLM_RESPONSE = 8;
+  PRIVATE_AGENT_RESPONSE = 9;
+}
+
+message ReplyRequest {
+  string token = 1;
+  StatusCode status = 2;
+}
+
+message ReplyResponse {
+  string message = 1;
+  StatusCode status = 2;
+}
