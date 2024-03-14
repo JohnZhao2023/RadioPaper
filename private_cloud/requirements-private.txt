@@ -5,3 +5,5 @@ tiktoken
 faiss-cpu
 pyyaml
 modelscope
+torch
+transformers
