@@ -2,6 +2,6 @@ pycryptodome
 langchain
 openai
 tiktoken
-faiss-gpu
 faiss-cpu
 pyyaml
+modelscope

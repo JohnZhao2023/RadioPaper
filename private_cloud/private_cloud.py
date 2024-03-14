@@ -2,10 +2,46 @@
 import socket
 import yaml
 from Crypto.Random import get_random_bytes
-from EncryptionDecryption import encryption_process, decrypt_ipv4_addresses
+from EncryptionDecryption import decrypt_ipv4_addresses, encrypt_ipv4_addresses
+from langchain.vectorstores import FAISS
+from langchain.embeddings import CacheBackedEmbeddings, ModelScopeEmbeddings
+from langchain.text_splitter import MarkdownHeaderTextSplitter
+from langchain.storage import LocalFileStore
+from langchain.document_loaders import TextLoader
 import time
+import os
 
-# What environment variable can be set to select a different kubeconfig file when running antctl out-of-cluster in "controller mode"?
+
+# check whether the specific dir is in the directory
+# for checking if there has already been a local vector store
+def check_for_data_directory(dir_name):
+    current_directory = os.getcwd()
+    directories = os.listdir(current_directory)
+
+    for directory in directories:
+        if os.path.isdir(os.path.join(current_directory, directory)) and dir_name in directory:
+            return True
+    return False
+
+
+# embedding the whole content and generate local vector store 
+def generate_knowledge_base_embeddings(encrypted_markdown_content, cached_embedder):
+    # header setting
+    headers_to_split_on = [
+        ("#", "Header 1"),
+        ("##", "Header 2"),
+        ("###", "Header 3"),
+        ("####", "Header 4"),
+    ]
+
+    # split the text
+    markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+    md_header_splits = markdown_splitter.split_text(encrypted_markdown_content)
+
+    # local vector store generation
+    vectorstore = FAISS.from_documents(md_header_splits, cached_embedder)
+    vectorstore.save_local("faiss_index")
+    return vectorstore
 
 
 # private cloud agent in charge of receiving the answer and decrypt it
@@ -41,10 +77,33 @@ def private_cloud_server(address_mapping, host='0.0.0.0', port=8000):
 
 
 # private cloud agent in charge of generating the question and encrypt it
-def private_cloud_client(address_mapping, key,
+def private_cloud_client(address_mapping, key, knowledge_file_path,
                          server_host,
                          server_port=8000,
                          private_port=8000):
+
+    # encrypt the question
+    loader = TextLoader(knowledge_file_path)
+    markdown_document = loader.load()
+    address_mapping, encrypted_markdown_content = encrypt_ipv4_addresses(address_mapping, markdown_document[0].page_content, key)
+
+    # embedding setting
+    underlying_embeddings = ModelScopeEmbeddings()
+    store = LocalFileStore("./cache/")
+    cached_embedder = CacheBackedEmbeddings.from_bytes_store(
+        underlying_embeddings, store
+    )
+
+    # check if the local vector store already exists
+    # if exists, then load it, otherwise do the embedding procedure
+    if check_for_data_directory("faiss_index"):
+        vectorstore = FAISS.load_local("faiss_index",
+                                       cached_embedder,
+                                       allow_dangerous_deserialization=True)
+    else:
+        vectorstore = generate_knowledge_base_embeddings(
+            encrypted_markdown_content,
+            cached_embedder)
 
     # generating the socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -69,19 +128,14 @@ def private_cloud_client(address_mapping, key,
             start_time = time.time()
 
             # encrypt the question
-            address_mapping, encrypted_input, encrypted_markdown_content = encryption_process(address_mapping, question, "./antctl.md", key)
-            # no encryption
-            # loader = TextLoader("./antctl.md")
-            # markdown_document = loader.load()
-            # encrypted_markdown_content = markdown_document[0].page_content
-            # encrypted_input = question
+            address_mapping, encrypted_input = encrypt_ipv4_addresses(address_mapping, question, key)
 
-            # data = json.dumps({
-            #     "encrypted_question": encrypted_input,
-            #     "encrypted_markdown_content": encrypted_markdown_content
-            # })
-            # sent the encrypted question and references
-            data = encrypted_input + "__xxxxx__" + encrypted_markdown_content
+            # do the similarity search from the vector store and get the relevant context
+            docs = vectorstore.similarity_search(question)
+            context = docs[0].page_content
+
+            # conbine the data and send
+            data = encrypted_input + "__xxxxx__" + context
             s.sendall(data.encode('utf-8'))
             print("\n\tthe question is already sent to the public server!")
 
@@ -111,6 +165,7 @@ if __name__ == "__main__":
     public_server_addr = yaml_data['properties']['public-server-address']
     public_port = yaml_data['properties']['public-server-port']
     private_port = yaml_data['properties']['private-server-port']
+    knowledge_file_path = yaml_data['properties']['knowledge-file-path']
 
     # forming the key
     key = get_random_bytes(16)
@@ -119,7 +174,7 @@ if __name__ == "__main__":
     address_mapping = {}
 
     # private cloud
-    private_cloud_client(address_mapping, key,
+    private_cloud_client(address_mapping, key, knowledge_file_path,
                          server_host=public_server_addr,
                          server_port=public_port,
                          private_port=private_port)

@@ -3,3 +3,5 @@ properties:
   public-server-port: 80
   private-server-port: 500
   public-server-address: '1.2.3.4'
+  knowledge-file-path: ./antctl.md
+  
