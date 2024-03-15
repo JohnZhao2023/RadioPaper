@@ -2,7 +2,6 @@
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import re
-from langchain.document_loaders import TextLoader
 
 
 # AES encryption func
@@ -38,33 +37,9 @@ def encrypt_ipv4_addresses(address_mapping, text, key):
     # return
     return address_mapping, text
 
-# # private cloud decryption
-# def decrypt_ipv4_addresses(address_mapping, result, key):
-#     # mapping ipv4 address
-#     ipv4_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
-#     ipv4_addresses = re.findall(ipv4_pattern, result)
-
-#     for encrypted_pii in ipv4_addresses:
-#         pii = decrypt_text_aes(encrypted_pii.encode('ISO-8859-1'), key)
-#         result = result.replace(encrypted_pii, pii)
-#     return result
-
 
 # private cloud decryption
 def decrypt_ipv4_addresses(address_mapping, result):
     for encrypted_ip, original_ip in address_mapping.items():
         result = result.replace(encrypted_ip, original_ip)
     return result
-
-
-# encryption process
-def encryption_process(address_mapping, input_string, document_path, key):
-    # encrypt ipv4 address in the question
-    address_mapping, encrypted_input = \
-                    encrypt_ipv4_addresses(address_mapping, input_string, key)
-    # encrypt ipv4 address in the reference document
-    loader = TextLoader(document_path)
-    markdown_document = loader.load()
-    address_mapping, encrypted_markdown_content = encrypt_ipv4_addresses(address_mapping, markdown_document[0].page_content, key)
-    # return the encrypted question and encrypted content
-    return address_mapping, encrypted_input, encrypted_markdown_content
